@@ -25,7 +25,42 @@
         NSString *defaultDBPath = [[[NSBundle mainBundle] resourcePath] stringByAppendingPathComponent:DB_NAME];
         [fileManager copyItemAtPath:defaultDBPath toPath:writableDBPath error:&error];
         NSLog(@"Database not Found, copied at new location.");
-	}
+    } else {
+        
+        
+        
+        NSString *setting;
+        sqlite3 *database;
+        if(sqlite3_open([writableDBPath UTF8String], &database)==SQLITE_OK)
+        {
+            NSString *statement;
+            sqlite3_stmt *compliedstatement;
+            
+            statement = [[NSString alloc] initWithFormat:@"SELECT `value` FROM `settings` WHERE name = 'version'"];
+            const char *sqlStatement = [statement UTF8String];
+            
+            if (sqlite3_prepare_v2(database, sqlStatement, -1, &compliedstatement, NULL) == SQLITE_OK) {
+                if (sqlite3_step(compliedstatement) == SQLITE_ROW)
+                    setting = [NSString stringWithUTF8String:((char *)sqlite3_column_text(compliedstatement, 0))?(char *)sqlite3_column_text(compliedstatement, 0):""];
+                else
+                    setting = @"";
+            }
+            sqlite3_finalize(compliedstatement);
+        }
+        sqlite3_close(database);
+        
+        if ([setting floatValue] < 1.0) {
+            
+            
+            NSString *defaultDBPath = [[[NSBundle mainBundle] resourcePath] stringByAppendingPathComponent:DB_NAME];
+            [fileManager removeItemAtPath:writableDBPath error:nil];
+            [fileManager copyItemAtPath:defaultDBPath toPath:writableDBPath error:&error];
+            
+            NSLog(@"Old database found, deleted! Copied new db in same location.");
+            
+        }
+        
+    }
     
     return writableDBPath;
 }

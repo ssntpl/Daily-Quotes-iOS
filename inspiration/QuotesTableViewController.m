@@ -20,7 +20,8 @@
 
 }
 @property (nonatomic, strong) NSArray *quoteData;
-
+@property (nonatomic) NSInteger numberOfDaysSinceFirstRun;
+@property (nonatomic, readonly) NSDate *firstDate;
 
 @end
 
@@ -48,6 +49,32 @@
     return _quoteData;
 }
 
+- (NSDate*)firstDate {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    return (NSDate*)[defaults objectForKey:@"firstDate"];
+}
+
+-(NSInteger)numberOfDaysSinceFirstRun {
+    return [self daysBetweenDate:self.firstDate andDate:[NSDate date]];
+}
+
+- (NSInteger)daysBetweenDate:(NSDate*)fromDateTime andDate:(NSDate*)toDateTime
+{
+    NSDate *fromDate;
+    NSDate *toDate;
+    
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    
+    [calendar rangeOfUnit:NSDayCalendarUnit startDate:&fromDate
+                 interval:NULL forDate:fromDateTime];
+    [calendar rangeOfUnit:NSDayCalendarUnit startDate:&toDate
+                 interval:NULL forDate:toDateTime];
+    
+    NSDateComponents *difference = [calendar components:NSDayCalendarUnit
+                                               fromDate:fromDate toDate:toDate options:0];
+    
+    return [difference day];
+}
 
 -(BOOL)isProVersion {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
@@ -116,6 +143,7 @@
 {
     return [self.quoteData count];
 }
+
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
 {
     static NSString *CellIdentifier = @"Cell";
@@ -146,15 +174,8 @@
     selectedRow = indexPath.row;
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     
-    NSCalendar *gregorian = [[NSCalendar alloc] initWithCalendarIdentifier:NSGregorianCalendar];
-    NSInteger todayDay = [gregorian ordinalityOfUnit:NSDayCalendarUnit inUnit:NSYearCalendarUnit forDate:[NSDate date]];
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSInteger firstDayOfAppRun = [(NSNumber*)[defaults objectForKey:@"isFirstRun"] integerValue];
-    QuotesClass *quote = [self.quoteData objectAtIndex:indexPath.row];
-    NSInteger quoteDay = firstDayOfAppRun + quote.quoteId - 1; // Quote ID starts from 1
     
-    
-    if (quoteDay > todayDay && !self.isProVersion) {
+    if (indexPath.row > self.numberOfDaysSinceFirstRun && !self.isProVersion) {
         [self askToBuyProVersion];
     }
     else {

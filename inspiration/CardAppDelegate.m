@@ -10,18 +10,24 @@
 #import <iAd/iAd.h>
 #import "IAP.h"
 
+#import <Parse/Parse.h>
+#import <ParseCrashReporting/ParseCrashReporting.h>
+
 @implementation CardAppDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {
     // Override point for customization after application launch.
+#if DEBUG
     NSString *bundleName = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleName"];
     NSString *displayName = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleDisplayName"];
     NSString *version = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleShortVersionString"];
     NSString *build = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleVersion"];
     NSString *bundleIdentifier = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleIdentifier"];
     NSString *executablePath = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleExecutable"];
-    NSLog(@"App info:\nDisplay Name: %@ \nBundle Name: %@ \nVersion: %@ build %@ \nBundle Identifier: %@ \nExecutable File Path: %@", displayName, bundleName, version, build, bundleIdentifier, executablePath);
+    NSString *appDir = [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask] lastObject];
+    NSLog(@"App info:\nDisplay Name: %@ \nBundle Name: %@ \nVersion: %@ build %@ \nBundle Identifier: %@ \nExecutable File Path: %@ \nApp Dir: %@", displayName, bundleName, version, build, bundleIdentifier, executablePath, appDir);
+#endif
     
     // Prepare interstitialAds
     [UIViewController prepareInterstitialAds];
@@ -32,7 +38,52 @@
     [UIApplication sharedApplication].applicationIconBadgeNumber=0;
 
     
+    // Parse crash reporting
+    [ParseCrashReporting enable];
+    
+    // Setup parse keys
+    [Parse setApplicationId:@"<Your app id>"
+                  clientKey:@"<Your client key>"];
+    
+    // Parse analytics
+    [PFAnalytics trackAppOpenedWithLaunchOptions:launchOptions];
+    
+    // Parse register for remote notifications
+    UIUserNotificationType userNotificationTypes = (UIUserNotificationTypeAlert |
+                                                    UIUserNotificationTypeBadge |
+                                                    UIUserNotificationTypeSound);
+    UIUserNotificationSettings *settings = [UIUserNotificationSettings settingsForTypes:userNotificationTypes
+                                                                             categories:nil];
+//    [application registerUserNotificationSettings:settings];
+//    [application registerForRemoteNotifications];
+    
+    
+    if ([application respondsToSelector:@selector(isRegisteredForRemoteNotifications)])
+    {
+        // iOS 8 Notifications
+        [application registerUserNotificationSettings:settings];
+        
+        [application registerForRemoteNotifications];
+    }
+    else
+    {
+        // iOS < 8 Notifications
+        [application registerForRemoteNotificationTypes:userNotificationTypes];
+    }
+    
+    
     return YES;
+}
+
+- (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken {
+    // Store the deviceToken in the current installation and save it to Parse.
+    PFInstallation *currentInstallation = [PFInstallation currentInstallation];
+    [currentInstallation setDeviceTokenFromData:deviceToken];
+    [currentInstallation saveInBackground];
+}
+
+- (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo {
+    [PFPush handlePush:userInfo];
 }
 							
 - (void)applicationWillResignActive:(UIApplication *)application

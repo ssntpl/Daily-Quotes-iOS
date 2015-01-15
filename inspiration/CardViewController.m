@@ -24,10 +24,11 @@
 
 @property (weak, nonatomic) IBOutlet UIView *quoteView;
 
-@property (nonatomic) NSInteger todayDay;
-@property (nonatomic) NSInteger firstDayOfAppRun;
+@property (nonatomic) NSInteger numberOfDaysSinceFirstRun;
+@property (nonatomic, readonly) NSDate *firstDate;
 @property (nonatomic, getter = isProVersion) BOOL proVersion;
 @property (nonatomic, strong) UIImage *currentImage;
+
 @end
 
 @implementation CardViewController
@@ -38,65 +39,56 @@
     
     NSLog(@"currentIndex setter called with value %d", currentIndex);
     
+    // Index can't be negative.
+    if (currentIndex<0) return;
+    
+    if (currentIndex > self.numberOfDaysSinceFirstRun && !self.isProVersion) {
+        NSLog(@"ProFeature called with quoteDay:%d and numberOfDaysSinceFirstRun:%d",currentIndex, self.numberOfDaysSinceFirstRun);
+        [self askToBuyProVersion];
+        return;
+    }
+    
+    // If its on zero then disable the back button.
     if (currentIndex == 0) {
         self.previousQuoteButton.enabled = NO;
     } else {
         self.previousQuoteButton.enabled = YES;
     }
     
-    if (currentIndex == self.quotesArray.count-1) {
-        self.nextQuoteButton.enabled = NO;
-    } else {
-        self.nextQuoteButton.enabled = YES;
-    }
-
     
-    if (currentIndex >= 0 && currentIndex < self.quotesArray.count) {
-        
-        QuotesClass *quote = [self.quotesArray objectAtIndex:currentIndex];
-        NSInteger quoteDay = self.firstDayOfAppRun + quote.quoteId - 1; // Quote ID starts from 1
-        
-        if (quoteDay > self.todayDay && !self.isProVersion) {
-            NSLog(@"ProFeature called with quoteDay:%d and todayDay:%d",quoteDay, self.todayDay);
-            [self askToBuyProVersion];
-        } else {
+    NSInteger index = currentIndex % self.quotesArray.count;
+    QuotesClass *quote = [self.quotesArray objectAtIndex:index];
+    NSDate *quoteDate = [self dateByAddingDays:currentIndex toDate:self.firstDate];
+    
+    NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+    [dateFormatter setTimeStyle:NSDateFormatterNoStyle];
+    [dateFormatter setDateStyle:NSDateFormatterMediumStyle];
+    
+    self.quoteLabel.text = quote.quote;
+    self.authorName.text = quote.author;
+    self.quoteDateLabel.text = [dateFormatter stringFromDate:quoteDate];
+    self.favouriteQuoteButton.selected = [DBCore isFavoriteQuote:quote.quoteId];//quote.isFavourite;
+    
+    _currentIndex = currentIndex;
+    [self pickRandomBackgrounds];
 
-            // update the quote on the view
-            NSDateComponents *components = [[NSCalendar currentCalendar] components:NSCalendarUnitDay | NSCalendarUnitMonth | NSCalendarUnitYear fromDate:[NSDate date]];
-            
-            NSDateFormatter *dateFormat = [[NSDateFormatter alloc] init];
-            [dateFormat setDateFormat:@"D-yyyy"];
-            
-            NSDate *quoteDate = [dateFormat dateFromString:[NSString stringWithFormat:@"%d-%d", (quoteDay % 365), ([components year]+(quoteDay/365))]];
-            
-            
-            NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
-            [dateFormatter setTimeStyle:NSDateFormatterNoStyle];
-            [dateFormatter setDateStyle:NSDateFormatterMediumStyle];
-            
-            self.quoteLabel.text = quote.quote;
-            self.authorName.text = quote.author;
-            self.quoteDateLabel.text = [dateFormatter stringFromDate:quoteDate];
-            self.favouriteQuoteButton.selected = [DBCore isFavoriteQuote:quote.quoteId];//quote.isFavourite;
-            
-//            if (_currentIndex != currentIndex || !_currentIndex) {
-                _currentIndex = currentIndex;
-                [self pickRandomBackgrounds];
-//            }
-            
-        }
-    }
     
 }
 
--(NSInteger)todayDay {
-    NSCalendar *gregorian = [[NSCalendar alloc] initWithCalendarIdentifier:NSGregorianCalendar];
-    return [gregorian ordinalityOfUnit:NSDayCalendarUnit inUnit:NSYearCalendarUnit forDate:[NSDate date]];
-}
-
--(NSInteger)firstDayOfAppRun {
+- (NSDate*)firstDate {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    return [(NSNumber*)[defaults objectForKey:@"isFirstRun"] integerValue];
+    return (NSDate*)[defaults objectForKey:@"firstDate"];
+}
+
+-(NSInteger)numberOfDaysSinceFirstRun {
+    
+    // Overriding start
+    return [self daysBetweenDate:self.firstDate andDate:[NSDate date]];
+    
+    // NSCalendar *gregorian = [[NSCalendar alloc] initWithCalendarIdentifier:NSGregorianCalendar];
+    // return [gregorian ordinalityOfUnit:NSDayCalendarUnit inUnit:NSYearCalendarUnit forDate:[NSDate date]];
+    
+    // overriding end
 }
 
 -(BOOL)isProVersion {
@@ -104,8 +96,35 @@
     return [(NSNumber*)[defaults objectForKey:@"isProVersion"] boolValue];
 }
 
-
 // private functions
+
+- (NSInteger)daysBetweenDate:(NSDate*)fromDateTime andDate:(NSDate*)toDateTime
+{
+    NSDate *fromDate;
+    NSDate *toDate;
+    
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    
+    [calendar rangeOfUnit:NSDayCalendarUnit startDate:&fromDate
+                 interval:NULL forDate:fromDateTime];
+    [calendar rangeOfUnit:NSDayCalendarUnit startDate:&toDate
+                 interval:NULL forDate:toDateTime];
+    
+    NSDateComponents *difference = [calendar components:NSDayCalendarUnit
+                                               fromDate:fromDate toDate:toDate options:0];
+    
+    return [difference day];
+}
+
+-(NSDate*)dateByAddingDays:(NSInteger)days toDate:(NSDate*)fromDate {
+    NSDateComponents *dayComponent = [[NSDateComponents alloc] init];
+    dayComponent.day = days;
+    
+    NSCalendar *theCalendar = [NSCalendar currentCalendar];
+    NSDate *nextDate = [theCalendar dateByAddingComponents:dayComponent toDate:fromDate options:0];
+    
+    return nextDate;
+}
 
 -(void)askToBuyProVersion {
     NSLog(@"User trying to access pro feature.");
@@ -147,7 +166,7 @@
     if (![defaults objectForKey:@"isFirstRun"]) {
         NSLog(@"Application is running for the first time. Check point created.");
 
-        [defaults setObject:[NSNumber numberWithInt:self.todayDay] forKey:@"isFirstRun"];
+//        [defaults setObject:[NSNumber numberWithInt:self.numberOfDaysSinceFirstRun] forKey:@"isFirstRun"];
         [defaults setObject:[NSDate date] forKey:@"firstDate"];
         [defaults setObject:[NSNumber numberWithInt:0] forKey:@"isProVersion"];
         [[NSUserDefaults standardUserDefaults] synchronize];
@@ -173,12 +192,8 @@
     // Do we have any quote in array? if yes display the current index, else load all quotes from db and display current date quote
     
     if (!self.quotesArray || self.quotesArray.count <=0) {
-        NSCalendar *gregorian = [[NSCalendar alloc] initWithCalendarIdentifier:NSGregorianCalendar];
-        NSUInteger dayOfYear = [gregorian ordinalityOfUnit:NSDayCalendarUnit inUnit:NSYearCalendarUnit forDate:[NSDate date]];
-        
         self.quotesArray = [DBCore getAllQuotes];
-//        NSLog(@"Array %@", self.quotesArray);
-        self.currentIndex = dayOfYear - self.firstDayOfAppRun;
+        self.currentIndex = self.numberOfDaysSinceFirstRun;
     }
     
     if (!self.backgroundImageView.image) {
